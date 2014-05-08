@@ -400,10 +400,10 @@ namespace Mono.Debugger.Soft
 
 		internal const int HEADER_LENGTH = 11;
 
-		static readonly bool EnableConnectionLogging = !String.IsNullOrEmpty (Environment.GetEnvironmentVariable ("MONO_SDB_LOG"));
+		static readonly bool EnableConnectionLogging = !String.IsNullOrWhiteSpace (Environment.GetEnvironmentVariable ("MONO_SDB_LOG"));
 		static int ConnectionId;
 		readonly StreamWriter LoggingStream = EnableConnectionLogging ? 
-			new StreamWriter (string.Format ("/tmp/sdb_conn_log_{0}", ConnectionId++), false) : null;
+			new StreamWriter (string.Format (Environment.GetEnvironmentVariable ("MONO_SDB_LOG"), ConnectionId++), false) : null;
 
 		/*
 		 * Th version of the wire-protocol implemented by the library. The library
@@ -1319,6 +1319,8 @@ namespace Mono.Debugger.Soft
 							} else {
 								throw new NotImplementedException ("Unknown event kind: " + kind);
 							}
+							if (EnableConnectionLogging)
+								LogPacket (GetPacketId (packet), -1, packet.Length, CommandString (r.CommandSet, r.Command) + kind);
 						}
 
 						EventHandler.Events (suspend_policy, events);
@@ -1385,17 +1387,25 @@ namespace Mono.Debugger.Soft
 			return string.Format ("[{0} {1}]", command_set, cmd);
 		}
 
-		long total_protocol_ticks;
+		Stopwatch connectionWatch;
+		long last_packet_tick;
 
-		void LogPacket (int packet_id, byte[] encoded_packet, byte[] reply_packet, CommandSet command_set, int command, Stopwatch watch) {
-			watch.Stop ();
-			total_protocol_ticks += watch.ElapsedTicks;
-			var ts = TimeSpan.FromTicks (total_protocol_ticks);
-			string msg = string.Format ("Packet: {0} sent: {1} received: {2} ms: {3} total ms: {4} {5}",
-			   packet_id, encoded_packet.Length, reply_packet.Length, watch.ElapsedMilliseconds,
-			   (ts.Seconds * 1000) + ts.Milliseconds,
-			   CommandString (command_set, command));
-
+		void LogPacket (int packet_id, int bytesSent, int bytesRecieved, string message, Stopwatch roundTripWatch = null) {
+			if (roundTripWatch != null)
+				roundTripWatch.Stop ();
+			if (connectionWatch == null) {
+				connectionWatch = Stopwatch.StartNew ();
+				LoggingStream.AutoFlush = true;
+				LoggingStream.WriteLine ("Time;PacketId;BytesSent;BytesRecieved;RoundTrip;Message");
+			}
+			string msg = string.Format ("{0};{1};{2};{3};{4};{5}",
+				             Math.Round (TimeSpan.FromTicks (connectionWatch.Elapsed.Ticks - last_packet_tick).TotalMilliseconds),
+				             packet_id,
+				             bytesSent,
+				             bytesRecieved,
+				             Math.Round (roundTripWatch == null ? 0 : roundTripWatch.Elapsed.TotalMilliseconds),
+				             message);
+			last_packet_tick = connectionWatch.Elapsed.Ticks;
 			LoggingStream.WriteLine (msg);
 			LoggingStream.Flush ();
 		}
@@ -1417,7 +1427,7 @@ namespace Mono.Debugger.Soft
 			lock (reply_packets_monitor) {
 				reply_cbs [id] = delegate (int packet_id, byte[] p) {
 					if (EnableConnectionLogging)
-						LogPacket (packet_id, encoded_packet, p, command_set, command, watch);
+						LogPacket (packet_id, encoded_packet.Length, p.Length, CommandString (command_set, command), watch);
 					/* Run the callback on a tp thread to avoid blocking the receive thread */
 					PacketReader r = new PacketReader (p);
 					cb.BeginInvoke (r, null, null);
@@ -1460,7 +1470,7 @@ namespace Mono.Debugger.Soft
 						PacketReader r = new PacketReader (reply);
 
 						if (EnableConnectionLogging)
-							LogPacket (packetId, encoded_packet, reply, command_set, command, watch);
+							LogPacket (packetId, encoded_packet.Length, reply.Length, CommandString (command_set, command), watch);
 						if (r.ErrorCode != 0) {
 							if (ErrorHandler != null)
 								ErrorHandler (this, new ErrorHandlerEventArgs () { ErrorCode = (ErrorCode)r.ErrorCode });
