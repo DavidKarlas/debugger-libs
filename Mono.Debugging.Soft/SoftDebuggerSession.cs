@@ -511,6 +511,10 @@ namespace Mono.Debugging.Soft
 
 		protected virtual void OnResumed ()
 		{
+			if (thread_mirrors != null) {
+				foreach (var thread in thread_mirrors)
+					thread.InvalidateFrames ();
+			}
 			thread_mirrors = null;
 			current_threads = null;
 			current_thread = null;
@@ -727,9 +731,11 @@ namespace Mono.Debugging.Soft
 
 		IList<ThreadMirror> GetThreads ()
 		{
-			if (thread_mirrors == null)
+			if (thread_mirrors == null) {
 				thread_mirrors = vm.GetThreads ();
-
+				foreach (var thread in thread_mirrors)
+					thread.PreFetchFrames ();
+			}
 			return thread_mirrors;
 		}
 

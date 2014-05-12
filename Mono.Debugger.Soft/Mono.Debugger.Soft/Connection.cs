@@ -1926,6 +1926,23 @@ namespace Mono.Debugger.Soft
 			return SendReceive (CommandSet.THREAD, (int)CmdThread.GET_NAME, new PacketWriter ().WriteId (id)).ReadString ();
 		}
 
+		internal void Thread_GetFrameInfo_Async (long id, int start_frame, int length, Action<FrameInfo[]> callback) {
+			Send (CommandSet.THREAD, (int)CmdThread.GET_FRAME_INFO, new PacketWriter ().WriteId (id).WriteInt (start_frame).WriteInt (length),
+				new Action<PacketReader> ((res) => {
+					int count = res.ReadInt ();
+					var frames = new FrameInfo [count];
+					for (int i = 0; i < count; ++i) {
+						var f = new FrameInfo ();
+						f.id = res.ReadInt ();
+						f.method = res.ReadId ();
+						f.il_offset = res.ReadInt ();
+						f.flags = (StackFrameFlags)res.ReadByte ();
+						frames [i] = f;
+					}
+					callback (frames);
+				}), 1);
+		}
+
 		internal FrameInfo[] Thread_GetFrameInfo (long id, int start_frame, int length) {
 			var res = SendReceive (CommandSet.THREAD, (int)CmdThread.GET_FRAME_INFO, new PacketWriter ().WriteId (id).WriteInt (start_frame).WriteInt (length));
 			int count = res.ReadInt ();

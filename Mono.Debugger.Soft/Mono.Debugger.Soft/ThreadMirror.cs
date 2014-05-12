@@ -15,21 +15,51 @@ namespace Mono.Debugger.Soft
 		internal ThreadMirror (VirtualMachine vm, long id, TypeMirror type, AppDomainMirror domain) : base (vm, id, type, domain) {
 		}
 
-		// FIXME: Cache, invalidate when the thread/runtime is resumed
+		bool fetchingFrames;
+		StackFrame[] cachedFrames;
+		ManualResetEvent fetchedEvent=new ManualResetEvent(true);
+
+		public void InvalidateFrames(){
+			cachedFrames = null;
+		}
+		System.Diagnostics.Stopwatch fetchingTime;
+		public void PreFetchFrames(){
+			fetchedEvent.Reset ();
+			vm.conn.Thread_GetFrameInfo_Async (id, 0, -1, (frame_info) => {
+				var frames = new List<StackFrame> ();
+
+				for (int i = 0; i < frame_info.Length; ++i) {
+					FrameInfo info = (FrameInfo)frame_info [i];
+					MethodMirror method = vm.GetMethod (info.method);
+					var f = new StackFrame (vm, info.id, this, method, info.il_offset, info.flags);
+					if (!(f.IsNativeTransition && !NativeTransitions))
+						frames.Add (f);
+				}
+
+				cachedFrames = frames.ToArray ();
+				fetchedEvent.Set();
+			});
+		}
+
+
 		public StackFrame[] GetFrames () {
-			FrameInfo[] frame_info = vm.conn.Thread_GetFrameInfo (id, 0, -1);
+			fetchedEvent.WaitOne ();
+			if (cachedFrames == null) {
+				FrameInfo[] frame_info = vm.conn.Thread_GetFrameInfo (id, 0, -1);
 
-			var frames = new List<StackFrame> ();
+				var frames = new List<StackFrame> ();
 
-			for (int i = 0; i < frame_info.Length; ++i) {
-				FrameInfo info = (FrameInfo)frame_info [i];
-				MethodMirror method = vm.GetMethod (info.method);
-				var f = new StackFrame (vm, info.id, this, method, info.il_offset, info.flags);
-				if (!(f.IsNativeTransition && !NativeTransitions))
-					frames.Add (f);
+				for (int i = 0; i < frame_info.Length; ++i) {
+					FrameInfo info = (FrameInfo)frame_info [i];
+					MethodMirror method = vm.GetMethod (info.method);
+					var f = new StackFrame (vm, info.id, this, method, info.il_offset, info.flags);
+					if (!(f.IsNativeTransition && !NativeTransitions))
+						frames.Add (f);
+				}
+
+				cachedFrames = frames.ToArray ();
 			}
-
-			return frames.ToArray ();
+			return cachedFrames;
 	    }
 
 		public string Name {
