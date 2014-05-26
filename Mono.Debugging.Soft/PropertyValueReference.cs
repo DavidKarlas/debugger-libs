@@ -37,13 +37,15 @@ namespace Mono.Debugging.Soft
 		TypeMirror declaringType;
 		Value[] indexerArgs;
 		ObjectValueFlags flags;
+		PropertyReferenceBatch batch;
 		
-		public PropertyValueReference (EvaluationContext ctx, PropertyInfoMirror property, object obj, TypeMirror declaringType, MethodMirror getter, Value[] indexerArgs): base (ctx)
+		public PropertyValueReference (EvaluationContext ctx, PropertyInfoMirror property, object obj, TypeMirror declaringType, MethodMirror getter, Value[] indexerArgs, PropertyReferenceBatch batch = null): base (ctx)
 		{
 			this.property = property;
 			this.obj = obj;
 			this.declaringType = declaringType;
 			this.indexerArgs = indexerArgs;
+			this.batch = batch;
 
 			var objectMirror = obj as ObjectMirror;
 			if (objectMirror != null)
@@ -125,7 +127,8 @@ namespace Mono.Debugging.Soft
 		protected override object GetValueExplicitly ()
 		{
 			var ctx = (SoftEvaluationContext) Context;
-
+			if (batch != null)
+				return batch.RuntimeInvoke (property, indexerArgs);
 			return ctx.RuntimeInvoke (property.GetGetMethod (true), obj ?? declaringType, indexerArgs);
 		}
 

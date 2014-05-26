@@ -910,10 +910,10 @@ namespace Mono.Debugging.Soft
 
 					if (!field.IsPublic && ((bindingFlags & BindingFlags.NonPublic) == 0))
 						continue;
-
 					yield return new FieldValueReference (ctx, field, co, type);
 				}
 
+				var propertiesBatch = new PropertyReferenceBatch ((SoftEvaluationContext)ctx, co);
 				foreach (PropertyInfoMirror prop in type.GetProperties (bindingFlags)) {
 					var getter = prop.GetGetMethod (true);
 
@@ -938,10 +938,11 @@ namespace Mono.Debugging.Soft
 						getter = overridden.GetGetMethod (true);
 						if (getter == null)
 							continue;
-						
-						yield return new PropertyValueReference (ctx, overridden, co, overridden.DeclaringType, getter, null);
+						propertiesBatch.Add (overridden, null);
+						yield return new PropertyValueReference (ctx, overridden, co, overridden.DeclaringType, getter, null, propertiesBatch);
 					} else {
-						yield return new PropertyValueReference (ctx, prop, co, type, getter, null);
+						propertiesBatch.Add (prop, null);
+						yield return new PropertyValueReference (ctx, prop, co, type, getter, null, propertiesBatch);
 					}
 				}
 
@@ -1910,13 +1911,15 @@ namespace Mono.Debugging.Soft
 		IAsyncResult handle;
 		Exception exception;
 		Value result;
+		Action<MethodCall> callback;
 		
-		public MethodCall (SoftEvaluationContext ctx, MethodMirror function, object obj, Value[] args)
+		public MethodCall (SoftEvaluationContext ctx, MethodMirror function, object obj, Value[] args, Action<MethodCall> callback)
 		{
 			this.ctx = ctx;
 			this.function = function;
 			this.obj = obj;
 			this.args = args;
+			this.callback = callback;
 		}
 		
 		public override string Description {
@@ -1929,13 +1932,13 @@ namespace Mono.Debugging.Soft
 		{
 			try {
 				if (obj is ObjectMirror)
-					handle = ((ObjectMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, null, null);
+					handle = ((ObjectMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, methodCallaback, null);
 				else if (obj is TypeMirror)
-					handle = ((TypeMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, null, null);
+					handle = ((TypeMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, methodCallaback, null);
 				else if (obj is StructMirror)
-					handle = ((StructMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, null, null);
+					handle = ((StructMirror)obj).BeginInvokeMethod (ctx.Thread, function, args, options, methodCallaback, null);
 				else if (obj is PrimitiveValue)
-					handle = ((PrimitiveValue)obj).BeginInvokeMethod (ctx.Thread, function, args, options, null, null);
+					handle = ((PrimitiveValue)obj).BeginInvokeMethod (ctx.Thread, function, args, options, methodCallaback, null);
 				else
 					throw new ArgumentException ("Soft debugger method calls cannot be invoked on objects of type " + obj.GetType ().Name);
 			} catch (InvocationException ex) {
@@ -1946,6 +1949,11 @@ namespace Mono.Debugging.Soft
 				DebuggerLoggingService.LogError ("Error in soft debugger method call thread on " + GetInfo (), ex);
 				exception = ex;
 			}
+		}
+
+		void methodCallaback(IAsyncResult res)
+		{
+			callback (this);
 		}
 
 		public override void Abort ()

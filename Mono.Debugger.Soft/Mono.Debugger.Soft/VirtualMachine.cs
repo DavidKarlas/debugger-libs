@@ -647,6 +647,16 @@ namespace Mono.Debugger.Soft
 			if (!conn.Version.AtLeast (major, minor))
 				throw new NotSupportedException ("This request is not supported by the protocol version implemented by the debuggee.");
 		}
+
+		public void StartBuffering ()
+		{
+			conn.StartBuffering ();
+		}
+
+		public void StopBuffering ()
+		{
+			conn.StopBuffering ();
+		}
     }
 
 	class EventHandler : MarshalByRefObject, IEventHandler
