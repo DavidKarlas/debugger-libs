@@ -424,6 +424,16 @@ namespace Mono.Debugger.Soft
 			}
 	    }
 
+		public void StartBuffering ()
+		{
+			conn.StartBuffering ();
+		}
+
+		public void StopBuffering ()
+		{
+			conn.StopBuffering ();
+		}
+
 		Dictionary <long, AppDomainMirror> domains;
 		object domains_lock = new object ();
 

@@ -760,7 +760,7 @@ namespace Mono.Debugging.Soft
 			if (locals.Length == 0)
 				yield break;
 
-			var batch = new LocalVariableBatch (cx.Frame, locals);
+			var batch = new LocalVariableBatch (cx.Frame, locals, null);
 
 			for (int i = 0; i < locals.Length; i++) {
 				if (IsClosureReferenceLocal (locals[i]) && IsGeneratedType (locals[i].Type)) {
@@ -1056,7 +1056,7 @@ namespace Mono.Debugging.Soft
 			childTypes = new string [types.Count];
 			types.CopyTo (childTypes);
 		}
-
+		Dictionary<ThreadMirror, ParametersFramesBatch> tempWorkaround=new Dictionary<ThreadMirror, ParametersFramesBatch>();
 		protected override IEnumerable<ValueReference> OnGetParameters (EvaluationContext ctx)
 		{
 			var soft = (SoftEvaluationContext) ctx;
@@ -1067,12 +1067,14 @@ namespace Mono.Debugging.Soft
 			} catch (AbsentInformationException) {
 				yield break;
 			}
-
 			if (locals.Length == 0)
 				yield break;
 
-			var batch = new LocalVariableBatch (soft.Frame, locals);
-				
+			if (!tempWorkaround.ContainsKey (soft.Frame.Thread))
+				tempWorkaround.Add (soft.Frame.Thread, new ParametersFramesBatch (soft));
+			tempWorkaround [soft.Frame.Thread].AddFrame (soft.Frame, locals);
+			var batch = new LocalVariableBatch (soft.Frame, locals, tempWorkaround [soft.Frame.Thread]);
+
 			for (int i = 0; i < locals.Length; i++) {
 				string name = !string.IsNullOrEmpty (locals[i].Name) ? locals[i].Name : "arg" + locals[i].Index;
 				yield return new VariableValueReference (ctx, name, locals[i], batch);
