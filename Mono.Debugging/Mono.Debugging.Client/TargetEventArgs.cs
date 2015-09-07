@@ -57,5 +57,7 @@ namespace Mono.Debugging.Client
 		public int? ExitCode {
 			get; set;
 		}
+
+		public bool Handled { get; set; }
 	}
 }

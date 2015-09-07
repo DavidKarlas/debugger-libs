@@ -1088,12 +1088,21 @@ namespace Mono.Debugging.Client
 				break;
 			}
 
-			if (evnt != null)
-				evnt (this, args);
-
-			EventHandler<TargetEventArgs> targetEvent = TargetEvent;
-			if (targetEvent != null)
-				targetEvent (this, args);
+			bool handled = false;
+			if (evnt != null) {
+				foreach (var listener in evnt.GetInvocationList ()) {
+					((EventHandler<TargetEventArgs>)listener).Invoke (this, args);
+					if (args.Handled) {
+						handled = true;
+						break;
+					}
+				}
+			}
+			if (!handled) {
+				EventHandler<TargetEventArgs> targetEvent = TargetEvent;
+				if (targetEvent != null)
+					targetEvent (this, args);
+			}
 		}
 		
 		internal void OnRunning ()
